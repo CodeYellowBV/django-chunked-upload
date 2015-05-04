@@ -60,7 +60,7 @@ class ChunkedUpload(models.Model):
             storage.delete(path)
 
     def __unicode__(self):
-        return u'<%s - upload_id: %s - bytes: %s - status: %s>' % (
+        return '<%s - upload_id: %s - bytes: %s - status: %s>' % (
             self.filename, self.upload_id, self.offset, self.status)
 
     def close_file(self):

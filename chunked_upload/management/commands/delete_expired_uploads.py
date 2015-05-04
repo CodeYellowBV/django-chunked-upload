@@ -8,7 +8,7 @@ from .settings import EXPIRATION_DELTA
 from .models import ChunkedUpload
 from .constants import UPLOADING, COMPLETE, FAILED
 
-prompt_msg = _(u'Do you want to delete {obj}?')
+prompt_msg = _('Do you want to delete {obj}?')
 
 
 class Command(BaseCommand):
@@ -35,7 +35,7 @@ class Command(BaseCommand):
 
         for chunked_upload in qs:
             if interactive:
-                prompt = prompt_msg.format(obj=chunked_upload) + u' (y/n): '
+                prompt = prompt_msg.format(obj=chunked_upload) + ' (y/n): '
                 answer = raw_input(prompt).lower()
                 while answer not in ('y', 'n'):
                     answer = raw_input(prompt).lower()
