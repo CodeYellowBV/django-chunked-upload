@@ -4,9 +4,9 @@ from django.core.management.base import BaseCommand
 from django.utils import timezone
 from django.utils.translation import ugettext as _
 
-from .settings import EXPIRATION_DELTA
-from .models import ChunkedUpload
-from .constants import UPLOADING, COMPLETE, FAILED
+from chunked_upload.settings import EXPIRATION_DELTA
+from chunked_upload.models import ChunkedUpload
+from chunked_upload.constants import UPLOADING, COMPLETE
 
 prompt_msg = _('Do you want to delete {obj}?')
 
@@ -29,9 +29,9 @@ class Command(BaseCommand):
     def handle(self, *args, **options):
         interactive = options.get('interactive')
 
-        count = {UPLOADING: 0, COMPLETE: 0, FAILED: 0}
+        count = {UPLOADING: 0, COMPLETE: 0}
         qs = self.model.objects.all()
-        qs = qs.filter(created_on__gte=(timezone.now() - EXPIRATION_DELTA))
+        qs = qs.filter(created_on__lt=(timezone.now() - EXPIRATION_DELTA))
 
         for chunked_upload in qs:
             if interactive:
@@ -48,4 +48,3 @@ class Command(BaseCommand):
 
         print '%i complete uploads were deleted.' % count[COMPLETE]
         print '%i incomplete uploads were deleted.' % count[UPLOADING]
-        print '%i failed uploads were deleted.' % count[FAILED]

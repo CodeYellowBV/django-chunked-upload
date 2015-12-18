@@ -8,7 +8,7 @@ from django.utils import timezone
 from .settings import MAX_BYTES
 from .models import ChunkedUpload
 from .response import Response
-from .constants import http_status, COMPLETE, FAILED
+from .constants import http_status, COMPLETE
 from .exceptions import ChunkedUploadError
 
 
@@ -23,17 +23,17 @@ class ChunkedUploadBaseView(View):
     def get_queryset(self, request):
         """
         Get (and filter) ChunkedUpload queryset.
-        By default, user can only continue uploading his own uploads.
+        By default, users can only continue uploading their own uploads.
         """
         queryset = self.model.objects.all()
-        if request.user.is_authenticated():
+        if hasattr(request, 'user') and request.user.is_authenticated():
             queryset = queryset.filter(user=request.user)
         return queryset
 
     def validate(self, request):
         """
-        Placeholder method to define extra validation. Must raise
-        ChunkedUploadError if validation fails.
+        Placeholder method to define extra validation.
+        Must raise ChunkedUploadError if validation fails.
         """
 
     def get_response_data(self, chunked_upload, request):
@@ -75,7 +75,7 @@ class ChunkedUploadBaseView(View):
         """
         Grants permission to start/continue an upload based on the request.
         """
-        if not request.user.is_authenticated():
+        if hasattr(request, 'user') and not request.user.is_authenticated():
             raise ChunkedUploadError(
                 status=http_status.HTTP_403_FORBIDDEN,
                 detail='Authentication credentials were not provided'
@@ -102,10 +102,15 @@ class ChunkedUploadView(ChunkedUploadBaseView):
     """
 
     field_name = 'file'
+    content_range_header = 'HTTP_CONTENT_RANGE'
     content_range_pattern = re.compile(
         r'^bytes (?P<start>\d+)-(?P<end>\d+)/(?P<total>\d+)$'
     )
     max_bytes = MAX_BYTES  # Max amount of data that can be uploaded
+    # If `fail_if_no_header` is True, an exception will be raised if the
+    # content-range header is not found. Default is False to match Jquery File
+    # Upload behavior (doesn't send header if the file is smaller than chunk)
+    fail_if_no_header = False
 
     def get_extra_attrs(self, request):
         """
@@ -145,9 +150,6 @@ class ChunkedUploadView(ChunkedUploadBaseView):
         if chunked_upload.status == COMPLETE:
             raise ChunkedUploadError(status=http_status.HTTP_400_BAD_REQUEST,
                                      detail=error_msg % 'complete')
-        if chunked_upload.status == FAILED:
-            raise ChunkedUploadError(status=http_status.HTTP_400_BAD_REQUEST,
-                                     detail=error_msg % 'failed')
 
     def get_response_data(self, chunked_upload, request):
         """
@@ -172,19 +174,23 @@ class ChunkedUploadView(ChunkedUploadBaseView):
                                                upload_id=upload_id)
             self.is_valid_chunked_upload(chunked_upload)
         else:
-            user = request.user if request.user.is_authenticated() else None
-            attrs = {'user': user, 'filename': chunk.name}
+            attrs = {'filename': chunk.name}
+            if hasattr(request, 'user') and request.user.is_authenticated():
+                attrs['user'] = request.user
             attrs.update(self.get_extra_attrs(request))
             chunked_upload = self.create_chunked_upload(save=False, **attrs)
 
-        content_range = request.META.get('HTTP_CONTENT_RANGE', '')
+        content_range = request.META.get(self.content_range_header, '')
         match = self.content_range_pattern.match(content_range)
         if match:
             start = int(match.group('start'))
             end = int(match.group('end'))
             total = int(match.group('total'))
+        elif self.fail_if_no_header:
+            raise ChunkedUploadError(status=http_status.HTTP_400_BAD_REQUEST,
+                                     detail='Error in request headers')
         else:
-            # Use the whole size when HTTP_CONTENT_RANGE is not provided.
+            # Use the whole size when HTTP_CONTENT_RANGE is not provided
             start = 0
             end = chunk.size - 1
             total = chunk.size
@@ -242,8 +248,6 @@ class ChunkedUploadCompleteView(ChunkedUploadBaseView):
         Verify if md5 checksum sent by client matches generated md5.
         """
         if chunked_upload.md5 != md5:
-            chunked_upload.status = FAILED
-            self._save(chunked_upload)
             raise ChunkedUploadError(status=http_status.HTTP_400_BAD_REQUEST,
                                      detail='md5 checksum does not match')
 
